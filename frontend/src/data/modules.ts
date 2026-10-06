@@ -1,3 +1,4 @@
+import { DEVICE_ACTION_TARGETS, DEVICE_ACTIONS, DEVICE_STATUSES } from './device-flow'
 import type { ModuleMeta } from './types'
 
 // 模块元数据由仓库生成时写入：字段、状态、动作、流转目标都在这里，页面不再各自写一遍。
@@ -151,9 +152,10 @@ export const MODULES: ModuleMeta[] = [
     entity: "监测设备",
     desc: "维护监测设备，围绕设备编号、设备类型、所属隐患点、安装日期做登记、筛选与状态流转。",
     fields: ["设备编号", "设备类型", "所属隐患点", "安装日期", "最近维护日", "电池余量", "通讯状态", "设备状态"],
-    statuses: ["正常运行", "信号异常", "低电量", "待维修", "已停用"],
-    actions: ["报修设备", "确认修复", "停用设备"],
-    actionTargets: {"报修设备": "待维修", "确认修复": "正常运行", "停用设备": "已停用"},
+    statuses: [...DEVICE_STATUSES],
+    actions: [...DEVICE_ACTIONS],
+    // 流转目标直接来自共用动作表，元数据不再单独维护一份判断。
+    actionTargets: { ...DEVICE_ACTION_TARGETS },
     metrics: ["设备总数", "正常运行数", "待维修数"],
   },
   {

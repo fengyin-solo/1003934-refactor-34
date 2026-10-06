@@ -38,6 +38,7 @@
         <tr>
           <th v-for="column in columns" :key="column">{{ column }}</th>
           <th>当前状态</th>
+          <th>诊断建议</th>
           <th>可执行动作</th>
         </tr>
       </thead>
@@ -45,9 +46,20 @@
         <tr v-for="row in rows" :key="String(row.id)">
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
           <td>{{ row.status }}</td>
+          <td>
+            <span>{{ diagnosisText(row) }}</span>
+            <button
+              v-if="diagnosisOf(row).adoptable"
+              class="link"
+              type="button"
+              @click="adoptDiagnosis(row)"
+            >
+              采纳建议
+            </button>
+          </td>
           <td class="row-actions">
             <button
-              v-for="action in actions"
+              v-for="action in actionsOf(row)"
               :key="action"
               class="link"
               type="button"
@@ -55,10 +67,11 @@
             >
               {{ action }}
             </button>
+            <span v-if="!actionsOf(row).length">—</span>
           </td>
         </tr>
         <tr v-if="!rows.length">
-          <td :colspan="columns.length + 2" class="empty-state">暂无监测设备数据，可先登记监测设备</td>
+          <td :colspan="columns.length + 3" class="empty-state">暂无监测设备数据，可先登记监测设备</td>
         </tr>
       </tbody>
     </table>
@@ -74,17 +87,20 @@
 import { computed, onMounted, ref } from 'vue'
 
 import {
+  adoptDeviceDiagnosis,
+  availableActions,
+  deviceDiagnosis,
   downloadEntries,
   listEntries,
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { DEVICE_STATUSES } from '@/data/device-flow'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('device')
 const columns = ["设备编号", "设备类型", "所属隐患点", "安装日期", "最近维护日", "电池余量", "通讯状态", "设备状态"]
-const actions = ["报修设备", "确认修复", "停用设备"]
-const statuses = ["正常运行", "信号异常", "低电量", "待维修", "已停用"]
+const statuses = [...DEVICE_STATUSES]
 const stats = [{"label": "设备总数", "value": 0}, {"label": "正常运行数", "value": 0}, {"label": "待维修数", "value": 0}]
 
 const rows = ref<EntryRow[]>([])
@@ -98,6 +114,22 @@ const statusSummary = computed(() =>
     count: rows.value.filter((row) => String(row.status) === status).length,
   })),
 )
+
+// 可执行动作不再在页面里硬编码一份，全部由共用动作表按当前状态裁决。
+function actionsOf(row: EntryRow): string[] {
+  return availableActions(meta.key, row)
+}
+
+function diagnosisOf(row: EntryRow) {
+  return deviceDiagnosis(row)
+}
+
+function diagnosisText(row: EntryRow): string {
+  const diagnosis = diagnosisOf(row)
+  return diagnosis.blockedByManual
+    ? diagnosis.reason
+    : `${diagnosis.suggestion}（${diagnosis.reason}）`
+}
 
 function resetFilters() {
   filters.value = {}
@@ -115,6 +147,16 @@ function openCreate() {
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
   const result = applyAction(meta.key, Number(row.id), action)
+  if (!result.ok) {
+    errorMessage.value = result.message
+    return
+  }
+  reload()
+}
+
+function adoptDiagnosis(row: EntryRow) {
+  errorMessage.value = ''
+  const result = adoptDeviceDiagnosis(Number(row.id))
   if (!result.ok) {
     errorMessage.value = result.message
     return

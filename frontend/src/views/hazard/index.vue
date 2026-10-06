@@ -37,6 +37,7 @@
       <thead>
         <tr>
           <th v-for="column in columns" :key="column">{{ column }}</th>
+          <th>设备核验</th>
           <th>当前状态</th>
           <th>可执行动作</th>
         </tr>
@@ -44,10 +45,11 @@
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)">
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td>{{ deviceCheck(row).verdict }}</td>
           <td>{{ row.status }}</td>
           <td class="row-actions">
             <button
-              v-for="action in actions"
+              v-for="action in actionsOf(row)"
               :key="action"
               class="link"
               type="button"
@@ -58,7 +60,7 @@
           </td>
         </tr>
         <tr v-if="!rows.length">
-          <td :colspan="columns.length + 2" class="empty-state">暂无隐患点台账数据，可先登记隐患点</td>
+          <td :colspan="columns.length + 3" class="empty-state">暂无隐患点台账数据，可先登记隐患点</td>
         </tr>
       </tbody>
     </table>
@@ -74,6 +76,8 @@
 import { computed, onMounted, ref } from 'vue'
 
 import {
+  availableActions,
+  checkHazardDevices,
   downloadEntries,
   listEntries,
   moduleMeta,
@@ -83,9 +87,17 @@ import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('hazard')
 const columns = ["隐患点编号", "隐患点名称", "灾害类型", "所在乡镇", "经纬度坐标", "威胁户数", "威胁人口", "隐患状态"]
-const actions = ["纳入监测", "启动治理", "申请核销"]
 const statuses = ["在册", "监测中", "已治理", "已核销", "新增"]
 const stats = [{"label": "隐患点总数", "value": 0}, {"label": "监测中数量", "value": 0}, {"label": "已治理数量", "value": 0}]
+
+// 设备核验列与巡查核验列共用同一份结果（checkHazardDevices 内部就是同一套汇总口径）。
+function deviceCheck(row: EntryRow) {
+  return checkHazardDevices(String(row['隐患点编号'] ?? ''))
+}
+
+function actionsOf(row: EntryRow): string[] {
+  return availableActions(meta.key, row)
+}
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)

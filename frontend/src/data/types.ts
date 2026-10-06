@@ -5,7 +5,9 @@ export type EntryRow = {
   status: string
   pending: boolean
   abnormal: boolean
-  [field: string]: string | number | boolean
+  // 监测设备专用：人工停用标记，优先级高于诊断建议。
+  人工停用?: boolean
+  [field: string]: string | number | boolean | undefined
 }
 
 export type ModuleMeta = {

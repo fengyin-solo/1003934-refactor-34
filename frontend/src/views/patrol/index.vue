@@ -37,6 +37,7 @@
       <thead>
         <tr>
           <th v-for="column in columns" :key="column">{{ column }}</th>
+          <th>设备核验</th>
           <th>当前状态</th>
           <th>可执行动作</th>
         </tr>
@@ -44,10 +45,11 @@
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)">
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td>{{ deviceCheck(row).verdict }}</td>
           <td>{{ row.status }}</td>
           <td class="row-actions">
             <button
-              v-for="action in actions"
+              v-for="action in actionsOf(row)"
               :key="action"
               class="link"
               type="button"
@@ -55,10 +57,11 @@
             >
               {{ action }}
             </button>
+            <button class="link" type="button" @click="verifyDevices(row)">核验设备</button>
           </td>
         </tr>
         <tr v-if="!rows.length">
-          <td :colspan="columns.length + 2" class="empty-state">暂无巡查排查数据，可先登记巡查记录</td>
+          <td :colspan="columns.length + 3" class="empty-state">暂无巡查排查数据，可先登记巡查记录</td>
         </tr>
       </tbody>
     </table>
@@ -74,18 +77,29 @@
 import { computed, onMounted, ref } from 'vue'
 
 import {
+  availableActions,
+  checkHazardDevices,
   downloadEntries,
   listEntries,
   moduleMeta,
   runAction as applyAction,
+  verifyPatrolDevices,
 } from '@/api/local-service'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('patrol')
 const columns = ["巡查编号", "隐患点编号", "巡查日期", "巡查人员", "巡查范围", "发现异常", "处置措施", "巡查状态"]
-const actions = ["完成巡查", "报告异常", "确认处置"]
 const statuses = ["待巡查", "已巡查", "发现异常", "已处置"]
 const stats = [{"label": "本月巡查次数", "value": 0}, {"label": "发现异常数", "value": 0}, {"label": "待处置数", "value": 0}]
+
+// 与隐患点台账的设备核验列完全同一份结果，不在巡查侧另算。
+function deviceCheck(row: EntryRow) {
+  return checkHazardDevices(String(row['隐患点编号'] ?? ''))
+}
+
+function actionsOf(row: EntryRow): string[] {
+  return availableActions(meta.key, row)
+}
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
@@ -115,6 +129,17 @@ function openCreate() {
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
   const result = applyAction(meta.key, Number(row.id), action)
+  if (!result.ok) {
+    errorMessage.value = result.message
+    return
+  }
+  reload()
+}
+
+// 巡查核验：同隐患点下的异常设备走共用动作表报修，设备与巡查两侧一次原子提交。
+function verifyDevices(row: EntryRow) {
+  errorMessage.value = ''
+  const result = verifyPatrolDevices(Number(row.id))
   if (!result.ok) {
     errorMessage.value = result.message
     return
