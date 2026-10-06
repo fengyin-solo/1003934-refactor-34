@@ -1,6 +1,8 @@
+import { DEVICE_ACTIONS, deviceActionTargets } from './device-actions'
 import type { ModuleMeta } from './types'
 
 // 模块元数据由仓库生成时写入：字段、状态、动作、流转目标都在这里，页面不再各自写一遍。
+// 监测设备的动作与流转目标直接取共用动作表（device-actions.ts），规则只维护那一处。
 export const MODULES: ModuleMeta[] = [
   {
     key: "hazard",
@@ -152,8 +154,8 @@ export const MODULES: ModuleMeta[] = [
     desc: "维护监测设备，围绕设备编号、设备类型、所属隐患点、安装日期做登记、筛选与状态流转。",
     fields: ["设备编号", "设备类型", "所属隐患点", "安装日期", "最近维护日", "电池余量", "通讯状态", "设备状态"],
     statuses: ["正常运行", "信号异常", "低电量", "待维修", "已停用"],
-    actions: ["报修设备", "确认修复", "停用设备"],
-    actionTargets: {"报修设备": "待维修", "确认修复": "正常运行", "停用设备": "已停用"},
+    actions: DEVICE_ACTIONS.map((item) => item.name),
+    actionTargets: deviceActionTargets(),
     metrics: ["设备总数", "正常运行数", "待维修数"],
   },
   {

@@ -1,5 +1,12 @@
+import {
+  applyDeviceAction,
+  buildHazardDeviceLedger,
+  HAZARD_DEVICE_LEDGER_KEY,
+  verifyHazardDevices,
+} from '@/data/device-actions'
+import type { HazardDeviceVerdict } from '@/data/device-actions'
 import { MODULE_BY_KEY } from '@/data/modules'
-import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import { allRows, listRows, resetRows, saveRows, saveRowsBatch } from '@/data/local-store'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
@@ -28,7 +35,33 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
   return { items: matched, total: matched.length, page: 1, size: matched.length }
 }
 
+// 监测设备走共用动作表：空设备、冲突动作在这里被明确拒绝；
+// 设备数据和隐患点设备台账同事务写入，任一侧失败都不留一半结果。
+function runDeviceAction(id: number, action: string): ActionResult {
+  const rows = listRows('device')
+  const index = rows.findIndex((row) => Number(row.id) === id)
+  const applied = applyDeviceAction(index >= 0 ? rows[index] : undefined, action)
+  if (!applied.ok) {
+    return { ok: false, message: applied.message }
+  }
+  const nextRows = [...rows]
+  nextRows[index] = applied.row
+  const ledger = buildHazardDeviceLedger(nextRows)
+  try {
+    saveRowsBatch({ device: nextRows, [HAZARD_DEVICE_LEDGER_KEY]: ledger })
+  } catch (error) {
+    return {
+      ok: false,
+      message: `监测设备写入失败，本次「${action}」未生效：${error instanceof Error ? error.message : '存储不可用'}`,
+    }
+  }
+  return { ok: true, message: applied.message }
+}
+
 export function runAction(key: string, id: number, action: string): ActionResult {
+  if (key === 'device') {
+    return runDeviceAction(id, action)
+  }
   const meta = moduleMeta(key)
   const target = meta.actionTargets[action]
   if (!target) {
@@ -52,8 +85,24 @@ export function runAction(key: string, id: number, action: string): ActionResult
   }
   const next = [...rows]
   next[index] = updated
-  saveRows(key, next)
+  try {
+    saveRows(key, next)
+  } catch (error) {
+    return {
+      ok: false,
+      message: `${meta.entity}写入失败，本次「${action}」未生效：${error instanceof Error ? error.message : '存储不可用'}`,
+    }
+  }
   return { ok: true, message: `${meta.entity}已${action}，当前状态「${target}」` }
+}
+
+// 隐患点设备台账：设备页台账和巡查页核验列都读这一份，保证两边结果一致。
+export function getHazardDeviceLedger(): EntryRow[] {
+  return listRows(HAZARD_DEVICE_LEDGER_KEY)
+}
+
+export function verifyHazardPointDevices(hazardPoint: string): HazardDeviceVerdict {
+  return verifyHazardDevices(getHazardDeviceLedger(), hazardPoint)
 }
 
 export function resetModule(key: string): PageResult {

@@ -38,6 +38,7 @@
         <tr>
           <th v-for="column in columns" :key="column">{{ column }}</th>
           <th>当前状态</th>
+          <th>诊断建议</th>
           <th>可执行动作</th>
         </tr>
       </thead>
@@ -45,6 +46,7 @@
         <tr v-for="row in rows" :key="String(row.id)">
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
           <td>{{ row.status }}</td>
+          <td>{{ describeDeviceDiagnosis(row) }}</td>
           <td class="row-actions">
             <button
               v-for="action in actions"
@@ -58,10 +60,29 @@
           </td>
         </tr>
         <tr v-if="!rows.length">
-          <td :colspan="columns.length + 2" class="empty-state">暂无监测设备数据，可先登记监测设备</td>
+          <td :colspan="columns.length + 3" class="empty-state">暂无监测设备数据，可先登记监测设备</td>
         </tr>
       </tbody>
     </table>
+
+    <section class="ledger-block">
+      <h3 class="ledger-title">隐患点设备台账</h3>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th v-for="column in ledgerColumns" :key="column">{{ column }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in ledger" :key="String(item.id)">
+            <td v-for="column in ledgerColumns" :key="column">{{ item[column] ?? '—' }}</td>
+          </tr>
+          <tr v-if="!ledger.length">
+            <td :colspan="ledgerColumns.length" class="empty-state">暂无隐患点设备台账数据</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
 
     <footer class="page-foot">
       <span>共 {{ total }} 条监测设备记录</span>
@@ -75,19 +96,24 @@ import { computed, onMounted, ref } from 'vue'
 
 import {
   downloadEntries,
+  getHazardDeviceLedger,
   listEntries,
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { describeDeviceDiagnosis, deviceActionNames } from '@/data/device-actions'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('device')
 const columns = ["设备编号", "设备类型", "所属隐患点", "安装日期", "最近维护日", "电池余量", "通讯状态", "设备状态"]
-const actions = ["报修设备", "确认修复", "停用设备"]
+// 动作按钮直接取共用动作表，报修、停用、恢复等判断只在 device-actions.ts 维护一份
+const actions = deviceActionNames()
 const statuses = ["正常运行", "信号异常", "低电量", "待维修", "已停用"]
 const stats = [{"label": "设备总数", "value": 0}, {"label": "正常运行数", "value": 0}, {"label": "待维修数", "value": 0}]
+const ledgerColumns = ["隐患点编号", "设备总数", "正常运行数", "待维修数", "已停用数", "异常设备数", "核验结论"]
 
 const rows = ref<EntryRow[]>([])
+const ledger = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
@@ -128,6 +154,8 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    // 台账和巡查核验列读同一份结果，设备动作执行后这里跟着刷新
+    ledger.value = getHazardDeviceLedger()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '监测设备列表读取失败'
   }
